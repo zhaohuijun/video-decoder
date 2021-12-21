@@ -18,7 +18,7 @@ export EXPORTED_FUNCTIONS="[ \
 
 echo "Running Emscripten..."
 emcc src/decoder.c ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
-    -O2 \
+    -Os \
     -I "ffmpeg/include" \
     -s WASM=1 \
     -s TOTAL_MEMORY=${TOTAL_MEMORY} \
@@ -26,6 +26,9 @@ emcc src/decoder.c ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/lib
    	-s EXTRA_EXPORTED_RUNTIME_METHODS="['addFunction']" \
 	-s RESERVED_FUNCTION_POINTERS=14 \
 	-s FORCE_FILESYSTEM=1 \
-    -o dist/libdecoder_264_265.wasm
+	-s SINGLE_FILE=1 \
+    -o dist/libdecoder_264_265.js
+
+echo "export default Module" >> dist/libdecoder_264_265.js
 
 echo "Finished Build"

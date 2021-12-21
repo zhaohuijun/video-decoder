@@ -10,6 +10,8 @@ class Decoder {
       default:
         throw new Error('not support type:', typ)
     }
+    console.log('xxx')
+    console.log('libDe:', libDe)
   }
 }
 
