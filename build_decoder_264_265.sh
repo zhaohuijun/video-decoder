@@ -1,3 +1,5 @@
+# 编译 FFmpeg
+
 SHELL_FOLDER=$(dirname "$0")
 
 rm -r ${SHELL_FOLDER}/ffmpeg

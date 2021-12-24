@@ -14,13 +14,35 @@
 
 int g_logLevel = AV_LOG_DEBUG;
 
+const char* logLevelStr(int level) {
+	switch (level) {
+		case AV_LOG_PANIC:
+			return "[panic]";
+		case AV_LOG_FATAL:
+			return "[fatal]";
+		case AV_LOG_ERROR:
+			return "[err]";
+		case AV_LOG_WARNING:
+			return "[warn]";
+		case AV_LOG_INFO:
+			return "[info]";
+		case AV_LOG_VERBOSE:
+			return "[verbose]";
+		case AV_LOG_DEBUG:
+			return "[debug]";
+		case AV_LOG_TRACE:
+			return "[trace]";
+	}
+	return "[]";
+}
+
 void logCB(void* ptr, int level, const char* fmt, va_list vl) {
 	char line[1024] = { 0 };
 	AVClass* avc = ptr ? *(AVClass**)ptr : NULL;
-	printf("ptr:%p,level:%d,fmt:%s,vl:%p\n", ptr, level, fmt, vl);
 	if (level > g_logLevel) {
 		return;
 	}
+	snprintf(line + strlen(line), sizeof(line) - strlen(line), "%s", logLevelStr(level));
 	if (avc) {
 		if (avc->parent_log_context_offset) {
 			AVClass** parent = *(AVClass***)(((uint8_t*)ptr) + avc->parent_log_context_offset);
@@ -35,28 +57,8 @@ void logCB(void* ptr, int level, const char* fmt, va_list vl) {
 	puts(line);
 }
 
-void enableLog(const char *level) {
-	if (!level) {
-		g_logLevel = AV_LOG_DEBUG;
-	} else if (strcasecmp("panic", level) == 0) {
-		g_logLevel = AV_LOG_PANIC;
-	} else if (strcasecmp("fatal", level) == 0) {
-		g_logLevel = AV_LOG_FATAL;
-	} else if (strcasecmp("error", level) == 0 || strcasecmp("err", level) == 0) {
-		g_logLevel = AV_LOG_ERROR;
-	} else if (strcasecmp("warning", level) == 0 || strcasecmp("warn", level) == 0) {
-		g_logLevel = AV_LOG_WARNING;
-	} else if (strcasecmp("info", level) == 0) {
-		g_logLevel = AV_LOG_INFO;
-	} else if (strcasecmp("verbose", level) == 0) {
-		g_logLevel = AV_LOG_VERBOSE;
-	} else if (strcasecmp("debug", level) == 0) {
-		g_logLevel = AV_LOG_DEBUG;
-	} else if (strcasecmp("trace", level) == 0) {
-		g_logLevel = AV_LOG_TRACE;
-	} else {
-		g_logLevel = AV_LOG_DEBUG;
-	}
+void enableLog(int level) {
+	g_logLevel = level;
 	av_log_set_level(g_logLevel);
 	av_log_set_callback(logCB);
 }
@@ -80,24 +82,25 @@ void releaseDecoder(void *ctx) {
 	free(de);
 }
 
-void *createH264Decoder(FrameCallback cb) {
-	if (!cb) {
-		av_log(NULL, AV_LOG_ERROR, "need cb");
-		return NULL;
-	}
+void *createH264Decoder() {
+	// if (!cb) {
+	// 	av_log(NULL, AV_LOG_ERROR, "need cb");
+	// 	return NULL;
+	// }
 	Decoder *de = malloc(sizeof(Decoder));
-	de->cb = cb;
+	// de->cb = cb;
 	de->codec = avcodec_find_decoder(AV_CODEC_ID_H264);
 	if (!de->codec) {
 		releaseDecoder(de);
 		return NULL;
 	}
+	av_log(NULL, AV_LOG_DEBUG, "createH264Decoder end");
 	return de;
 }
 
-void *createH265Decoder(FrameCallback cb) {
+void *createH265Decoder() {
 	Decoder *de = malloc(sizeof(Decoder));
-	de->cb = cb;
+	// de->cb = cb;
 	return de;
 }
 

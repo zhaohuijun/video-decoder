@@ -1,3 +1,5 @@
+# 编译最终的wasm产出
+
 SHELL_FOLDER=$(dirname "$0")
 
 cd ${SHELL_FOLDER}
