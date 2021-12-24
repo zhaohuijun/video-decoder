@@ -116,6 +116,7 @@ class Decoder {
     }
   }
 
+  // 设置编码器初始化的回调，初始化完毕后才能进行后续操作，包括创建对象
   static setReadyCb(cb) {
     if (gReady) {
       setTimeout(cb, 0);
@@ -124,18 +125,81 @@ class Decoder {
     }
   }
 
+  // 是否已经准备好
+  static isReady() {
+    return gReady
+  }
+
+  // 构造函数，参数是编码类型
   constructor(typ) {
     switch (typ) {
       case 'h264':
-        this.ctx = libDe._createH264Decoder()
+        {
+          const cb = libDe.addFunction(this._cb)
+          this._ctx = libDe._createH264Decoder(cb)
+          this._typ = 'h264'
+        }
         break
       case 'h265':
-        this.ctx = libDe._createH264Decoder()
+        {
+          const cb = libDe.addFunction(this._cb)
+          this._ctx = libDe._createH265Decoder(cb)
+          this._typ = 'h265'
+        }
         break
       default:
         throw new Error('not support type:', typ)
     }
   }
+
+  _cb(rgba, width, height) {
+    console.log('cb:', rgba, width, height);
+  }
+
+  type() {
+    return this._typ
+  }
+
+  // 析构函数，是否资源
+  dispose() {
+    if (!this._ctx) {
+      return
+    }
+    libDe._releaseDecoder(this._ctx)
+    this._ctx = null
+    this._typ = ''
+  }
+
+  // 输入编码数据，输出解码结果，输出是一个数组
+  // 参数是 Uint8Array 类型
+  put(buf) {
+    if (!this._ctx) {
+      log('error', 'no _ctx when put')
+      return
+    }
+    if (!buf) {
+      log('error', 'need param buf')
+      return
+    }
+    if (!(buf instanceof Uint8Array)) {
+      log('error', 'param buf must be Uint8Array')
+      return
+    }
+    const cBuf = libDe._malloc(buf.length)
+    libDe.HEAPU8.set(buf, cBuf)
+    libDe._put(this._ctx, cBuf, buf.length)
+    return
+  }
+
+  // 确保所有输入的数据都完成解码
+  flush() {
+    if (!this._ctx) {
+      log('error', 'no _ctx when flush')
+      return
+    }
+    libDe._flush(this._ctx);
+  }
+
 }
 
 export default Decoder
