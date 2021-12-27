@@ -1,13 +1,13 @@
 # 编译最终的wasm产出
 
-SHELL_FOLDER=$(dirname "$0")
+SHELL_FOLDER=$(cd "$(dirname \"$0\")"; pwd)
 
 cd ${SHELL_FOLDER}
 
 mkdir -p ${SHELL_FOLDER}/dist
 
 rm -rf dist/libdecoder_264_265.*
-export TOTAL_MEMORY=67108864
+export TOTAL_MEMORY=128MB
 export EXPORTED_FUNCTIONS="[ \
 		'_enableLog', \
 		'_disableLog', \
