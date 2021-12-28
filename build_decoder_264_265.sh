@@ -14,6 +14,7 @@ emconfigure ./configure --cc="emcc" --cxx="em++" --ar="emar" --prefix="${SHELL_F
     --disable-programs --disable-logging --disable-everything \
     --disable-ffplay --disable-ffprobe --disable-asm --disable-doc --disable-devices --disable-network \
     --disable-hwaccels --disable-parsers --disable-bsfs --disable-debug --disable-protocols --disable-indevs --disable-outdevs \
+    --enable-demuxer=h264 --enable-demuxer=hevc \
     --enable-decoder=hevc --enable-parser=hevc \
     --enable-decoder=h264  --enable-parser=h264
 make -j 8

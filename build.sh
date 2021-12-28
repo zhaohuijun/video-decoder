@@ -1,6 +1,6 @@
 # 编译最终的wasm产出
 
-SHELL_FOLDER=$(cd "$(dirname \"$0\")"; pwd)
+SHELL_FOLDER=$(cd "$(dirname "$0")"; pwd)
 
 cd ${SHELL_FOLDER}
 
@@ -14,12 +14,11 @@ export EXPORTED_FUNCTIONS="[ \
 		'_createH264Decoder', \
 		'_createH265Decoder', \
 		'_releaseDecoder', \
-		'_put', \
-		'_flush' \
+		'_getFrame' \
 ]"
 
 echo "Running Emscripten..."
-emcc src/decoder.c ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
+emcc src/decoder.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
     -Os \
     -I "ffmpeg/include" \
     -s WASM=1 \
@@ -29,8 +28,8 @@ emcc src/decoder.c ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/lib
 	-s RESERVED_FUNCTION_POINTERS=14 \
 	-s FORCE_FILESYSTEM=1 \
 	-s SINGLE_FILE=1 \
-    -o dist/libdecoder_264_265.js
+    -o ${SHELL_FOLDER}/dist/libdecoder_264_265.js
 
-echo "export default Module" >> dist/libdecoder_264_265.js
+echo "export default Module" >> ${SHELL_FOLDER}/dist/libdecoder_264_265.js
 
 echo "Finished Build"

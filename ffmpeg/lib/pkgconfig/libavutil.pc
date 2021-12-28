@@ -1,11 +1,11 @@
-prefix=/data/gitlab/ffmpeg/../decoder_wasm/dist
+prefix=/Users/lujianfei/src/video/video-decoder/ffmpeg
 exec_prefix=${prefix}
-libdir=/data/gitlab/ffmpeg/../decoder_wasm/dist/lib
-includedir=/data/gitlab/ffmpeg/../decoder_wasm/dist/include
+libdir=/Users/lujianfei/src/video/video-decoder/ffmpeg/lib
+includedir=/Users/lujianfei/src/video/video-decoder/ffmpeg/include
 
 Name: libavutil
 Description: FFmpeg utility library
-Version: 56.22.100
+Version: 56.70.100
 Requires: 
 Requires.private: 
 Conflicts:

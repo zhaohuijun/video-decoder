@@ -132,17 +132,23 @@ class Decoder {
 
   // 构造函数，参数是编码类型
   constructor(typ) {
+    const self = this
+    this._buf = []
     switch (typ) {
       case 'h264':
         {
-          const cb = libDe.addFunction(this._cb)
+          const cb = libDe.addFunction((opaque, buf, bufSize) => {
+            return self._cb(opaque, buf, bufSize)
+          })
           this._ctx = libDe._createH264Decoder(cb)
           this._typ = 'h264'
         }
         break
       case 'h265':
         {
-          const cb = libDe.addFunction(this._cb)
+          const cb = libDe.addFunction((opaque, buf, bufSize) => {
+            return self._cb(opaque, buf, bufSize)
+          })
           this._ctx = libDe._createH265Decoder(cb)
           this._typ = 'h265'
         }
@@ -150,10 +156,28 @@ class Decoder {
       default:
         throw new Error('not support type:', typ)
     }
+    if (!this._ctx) {
+      throw new Error('createDecoder fail:', typ)
+    }
+    log('debug', 'Decoder constructored', typ)
   }
 
-  _cb(rgba, width, height) {
-    console.log('cb:', rgba, width, height);
+  _cb(opaque, buf, bufSize) {
+    // console.log('cb this:', this)
+    // console.log('cb:', opaque, buf, bufSize);
+    if (this._buf.length <= 0) {
+      return -(0x20464F45) // 'EOF '
+    }
+    let item = this._buf.shift()
+    if (bufSize >= item.length) {
+      libDe.HEAPU8.set(buf, item)
+      return item.length
+    } else {
+      libDe.HEAPU8.set(buf, item.subarray(0, bufSize))
+      item = item.subarray(bufSize)
+      this._buf.unshift(item)
+      return bufSize
+    }
   }
 
   type() {
@@ -185,19 +209,23 @@ class Decoder {
       log('error', 'param buf must be Uint8Array')
       return
     }
-    const cBuf = libDe._malloc(buf.length)
-    libDe.HEAPU8.set(buf, cBuf)
-    libDe._put(this._ctx, cBuf, buf.length)
+    this._buf.push(buf)
+    // const cBuf = libDe._malloc(buf.length)
+    // libDe.HEAPU8.set(buf, cBuf)
+    // libDe._put(this._ctx, cBuf, buf.length)
+    // libDe._free(cBuf)
     return
   }
 
-  // 确保所有输入的数据都完成解码
-  flush() {
+  // 取图片
+  get() {
     if (!this._ctx) {
-      log('error', 'no _ctx when flush')
+      log('error', 'no _ctx when put')
       return
     }
-    libDe._flush(this._ctx);
+    const f = libDe._getFrame(this._ctx)
+    console.log('frame: ', f)
+    return null
   }
 
 }

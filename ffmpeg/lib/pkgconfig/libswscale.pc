@@ -1,12 +1,12 @@
-prefix=/data/gitlab/ffmpeg/../decoder_wasm/dist
+prefix=/Users/lujianfei/src/video/video-decoder/ffmpeg
 exec_prefix=${prefix}
-libdir=/data/gitlab/ffmpeg/../decoder_wasm/dist/lib
-includedir=/data/gitlab/ffmpeg/../decoder_wasm/dist/include
+libdir=/Users/lujianfei/src/video/video-decoder/ffmpeg/lib
+includedir=/Users/lujianfei/src/video/video-decoder/ffmpeg/include
 
 Name: libswscale
 Description: FFmpeg image rescaling library
-Version: 5.3.100
-Requires: libavutil >= 56.22.100
+Version: 5.9.100
+Requires: libavutil >= 56.70.100
 Requires.private: 
 Conflicts:
 Libs: -L${libdir}  -lswscale -lm
