@@ -14,12 +14,18 @@ export EXPORTED_FUNCTIONS="[ \
 		'_createH264Decoder', \
 		'_createH265Decoder', \
 		'_releaseDecoder', \
-		'_getFrame' \
+		'_getFrame', \
+		'_findStreamInfo', \
+		'_streamInfoReady' \
 ]"
 
+# FLAGS=' -O0 '
+FLAGS=' -Os '
+FLAGS=${FLAGS}' -s ASSERTIONS=1 '
+
 echo "Running Emscripten..."
-emcc src/decoder.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
-    -Os \
+emcc src/decoder2.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
+    ${FLAGS} \
     -I "ffmpeg/include" \
     -s WASM=1 \
     -s TOTAL_MEMORY=${TOTAL_MEMORY} \

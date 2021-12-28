@@ -105,6 +105,7 @@ typedef struct {
     uint8_t* io_buffer;		// 缓存(avio用的)
 	AVInputFormat* input_format;	// 封装格式
 	AVFormatContext* fmt; 	// 流封装
+	AVCodecParserContext* parser;	// 相当于fmt
 	AVCodec* codec;			// 编码
 	int stream_index;		// 视频流的序号
 	AVCodecContext* ctx;	// 解码句柄
@@ -143,6 +144,10 @@ void releaseDecoder(void *ctx) {
 		avcodec_close(de->ctx);
 		avcodec_free_context(&(de->ctx));
 		de->ctx = NULL;
+	}
+	if (de->parser) {
+		av_parser_close(de->parser);
+		de->parser = NULL;
 	}
 	if (de->fmt) {
 		avformat_close_input(&(de->fmt));
@@ -191,50 +196,15 @@ void* createDecoder(const char* fmt_name, enum AVCodecID type_id, IOReadCallback
 	memset(de, 0, sizeof(Decoder));
 	de->io_read_cb = cb;
 
-	log_fmts(AV_LOG_DEBUG);
-
-	de->input_format = av_find_input_format(fmt_name);
-    if (!de->input_format) {
-        av_log(NULL, AV_LOG_ERROR, "av_find_input_format fail.\n");
-		releaseDecoder(de);
-        return NULL;
-    }
-    av_log(NULL, AV_LOG_DEBUG, "input_format: %s, %s, %s.\n", 
-        de->input_format->name, de->input_format->long_name, de->input_format->mime_type);
-
-    de->io_buffer_size = 4096;
-    // de->io_buffer = av_malloc(de->io_buffer_size);
-	// if (!de->io_buffer) {
-    //     av_log(NULL, AV_LOG_ERROR, "av_malloc fail.\n");
-	// 	releaseDecoder(de);
-    //     return NULL;
-    // }
-
-	// de->io_ctx = avio_alloc_context(de->io_buffer, de->io_buffer_size, 0, de, io_read_cb_wrapper, NULL, NULL);
-	// if (!de->io_ctx) {
-    //     av_log(NULL, AV_LOG_ERROR, "avio_alloc_context fail.\n");
-	// 	releaseDecoder(de);
-    //     return NULL;
-    // }
-
-    // de->fmt = avformat_alloc_context();
-    // if (!de->fmt) {
-    //     av_log(NULL, AV_LOG_ERROR, "avformat_alloc_context fail.\n");
-	// 	releaseDecoder(de);
-    //     return NULL;
-    // }
-	// de->fmt->pb = de->io_ctx;
-
-	// ret = avformat_open_input(&(de->fmt), NULL, de->input_format, NULL);
-	// if (ret < 0) {
-	// 	av_log(NULL, AV_LOG_ERROR, "avformat_open_input fail %d.\n", ret);
-	// 	releaseDecoder(de);
-    //     return NULL;
-	// }
-
 	de->codec = avcodec_find_decoder(type_id);
     if (!de->codec) {
         av_log(NULL, AV_LOG_ERROR, "avcodec_find_decoder fail.\n");
+        return NULL;
+    }
+
+	de->parser = av_parser_init(type_id);
+	if (!de->parser) {
+        av_log(NULL, AV_LOG_ERROR, "av_parser_init fail.\n");
         return NULL;
     }
 
@@ -244,6 +214,13 @@ void* createDecoder(const char* fmt_name, enum AVCodecID type_id, IOReadCallback
 		releaseDecoder(de);
         return NULL;
     }
+
+	ret = avcodec_open2(de->ctx, de->codec, NULL);
+	if (ret < 0) {
+		av_log(NULL, AV_LOG_ERROR, "avcodec_open2 fail %d.\n", ret);
+		releaseDecoder(de);
+        return NULL;
+	}
 
 	de->packet = av_packet_alloc();
 	if (!de->packet) {
@@ -265,6 +242,13 @@ void* createDecoder(const char* fmt_name, enum AVCodecID type_id, IOReadCallback
 		return NULL;
 	}
 
+	de->io_buffer_size = 4096;
+	de->io_buffer = av_malloc(de->io_buffer_size);
+	if (!de->io_buffer) {
+        av_log(NULL, AV_LOG_ERROR, "av_malloc fail.\n");
+		releaseDecoder(de);
+		return NULL;
+    }
 	
 	return de;
 }
@@ -293,84 +277,12 @@ int findStreamInfo(void* ctx) {
 	}
 	Decoder* de = (Decoder*)ctx;
 
-	if (de->fmt) {
-		avformat_close_input(&(de->fmt));	// 关闭后重新开始
-	}
-	if (de->io_ctx) {
-		avio_context_free(&(de->io_ctx));
-		de->io_ctx = NULL;
-	}
-	if (de->io_buffer) {
-		av_free(de->io_buffer);
-		de->io_buffer = NULL;
-	}
-
-	de->io_buffer = av_malloc(de->io_buffer_size);
-	if (!de->io_buffer) {
-        av_log(NULL, AV_LOG_ERROR, "av_malloc fail.\n");
-        return AVERROR_EXTERNAL;
-    }
-
-	de->io_ctx = avio_alloc_context(de->io_buffer, de->io_buffer_size, 0, de, io_read_cb_wrapper, NULL, NULL);
-	if (!de->io_ctx) {
-        av_log(NULL, AV_LOG_ERROR, "avio_alloc_context fail.\n");
-        return AVERROR_EXTERNAL;
-    }
-	
-    de->fmt = avformat_alloc_context();
-    if (!de->fmt) {
-        av_log(NULL, AV_LOG_ERROR, "avformat_alloc_context fail.\n");
-        return AVERROR_EXTERNAL;
-    }
-	de->fmt->pb = de->io_ctx;
-
-	ret = avformat_open_input(&(de->fmt), NULL, de->input_format, NULL);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_ERROR, "avformat_open_input fail %d.\n", ret);
-        return AVERROR_EXTERNAL;
-	}
-
-	ret = avformat_find_stream_info(de->fmt, NULL);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_ERROR, "avformat_find_stream_info fail %d.\n", ret);
-        return AVERROR_EXTERNAL;
-	}
-
-	ret = av_find_best_stream(de->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_ERROR, "av_find_best_stream fail %d.\n", ret);
-        return AVERROR_EXTERNAL;
-	}
-	de->stream_index = ret;
-
-	av_log(NULL, AV_LOG_DEBUG, "stream: %d\n", de->stream_index);
-
-	AVCodecParameters* pars = de->fmt->streams[de->stream_index]->codecpar;
-
-	log_parameters(AV_LOG_DEBUG, pars);
-
-	if (pars->width <= 0 || pars->height <= 0) {
-		return AVERROR_BUFFER_TOO_SMALL;
-	}
-
-	ret = avcodec_parameters_to_context(de->ctx, pars);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_ERROR, "avcodec_parameters_to_context fail %d.\n", ret);
-        return AVERROR_EXTERNAL;
-	}
-
-	ret = avcodec_open2(de->ctx, de->codec, NULL);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_ERROR, "avcodec_open2 fail %d.\n", ret);
-        return AVERROR_EXTERNAL;
-	}
-
 	de->found_info = 1;
 
 	return 0;
 }
 
-Frame* recvFrameRGBA(Decoder* de) {
+Frame* recvFrameRGBAOld(Decoder* de) {
 	int ret = avcodec_receive_frame(de->ctx, de->frameYUV);
 	if (ret < 0) {
 		av_log(NULL, AV_LOG_DEBUG, "avcodec_receive_frame ret: %d\n", ret);
@@ -423,7 +335,7 @@ Frame* recvFrameRGBA(Decoder* de) {
 	return f;
 }
 
-Frame* recvFrame(Decoder* de) {
+Frame* recvFrameMONO(Decoder* de) {
 	int ret = avcodec_receive_frame(de->ctx, de->frameYUV);
 	if (ret < 0) {
 		av_log(NULL, AV_LOG_DEBUG, "avcodec_receive_frame ret: %d\n", ret);
@@ -437,18 +349,76 @@ Frame* recvFrame(Decoder* de) {
 		av_log(NULL, AV_LOG_ERROR, "av_malloc err: %d\n", size);
 		return NULL;
 	}
+	// av_log(NULL, AV_LOG_ERROR, "buf size: %d\n", size);
 	f->width = de->frameYUV->width;
 	f->height = de->frameYUV->height;
 	// memcpy(f->buf, de->frameYUV->buf[0]->data, de->frameRGBA->buf[0]->size);
-	memset(f->buf, 255, size);
+	// memset(f->buf, 255, size);
 	for (int y = 0; y < f->height; y++) {
 		for (int x = 0; x < f->width; x++) {
-			unsigned char v = de->frameYUV->buf[0]->data[y * f->height + x];
-			int p = y * f->height * 4 + x * 4;
+			unsigned char v = de->frameYUV->buf[0]->data[y * f->width + x];
+			int p = y * f->width * 4 + x * 4;
 			f->buf[p] = v;
-			f->buf[p+1] = v;
-			f->buf[p+2] = v;
+			f->buf[p+1] = 0;
+			f->buf[p+2] = 0;
+			f->buf[p+3] = 255;
 		}
+	}
+	av_frame_unref(de->frameYUV);
+	return f;
+}
+
+Frame* recvFrame(Decoder* de) {
+	int ret = avcodec_receive_frame(de->ctx, de->frameYUV);
+	if (ret < 0) {
+		av_log(NULL, AV_LOG_DEBUG, "avcodec_receive_frame ret: %d\n", ret);
+		return NULL;
+	}
+	int width = de->frameYUV->width;
+	int height = de->frameYUV->height;
+	// 创建返回用的对象
+	int size = (width * height) << 2;	// 一个像素4个byte，rgba
+	Frame* f = malloc(sizeof(Frame) + size);
+	if (!f) {
+		av_log(NULL, AV_LOG_ERROR, "av_malloc err: %d\n", size);
+		return NULL;
+	}
+	f->width = width;
+	f->height = height;
+	// 拿到的图片是yuv的，转rgba
+	if (de->sws) {
+		if (de->width != width || de->height != height) {
+			sws_freeContext(de->sws);
+			de->sws = NULL;
+		}
+	}
+	if (!de->sws) {
+		de->sws = sws_getContext(
+			width, height, AV_PIX_FMT_YUV420P,
+			width, height, AV_PIX_FMT_RGBA,
+			0, NULL, NULL, NULL);
+		if (!de->sws) {
+			av_log(NULL, AV_LOG_ERROR, "sws_getContext fail.");
+			return NULL;
+		}
+		de->width = width;
+		de->height = height;
+	}
+	
+	uint8_t* dstSlice[AV_NUM_DATA_POINTERS] = {f->buf};
+	int dstStride[AV_NUM_DATA_POINTERS] = {width<<2};
+	// av_log(NULL, AV_LOG_ERROR, "dstSlice: %p, %p, %p, %p, %p, %p, %p, %p\n", dstSlice[0], dstSlice[1], dstSlice[2], dstSlice[3], dstSlice[4], dstSlice[5], dstSlice[6], dstSlice[7]);
+	// av_log(NULL, AV_LOG_ERROR, "dstStride: %d, %d, %d, %d, %d, %d, %d, %d\n", dstStride[0], dstStride[1], dstStride[2], dstStride[3], dstStride[4], dstStride[5], dstStride[6], dstStride[7]);
+	// av_log(NULL, AV_LOG_ERROR, "srcSlice: %p, %p, %p, %p, %p, %p, %p, %p\n", de->frameYUV->data[0], de->frameYUV->data[1], de->frameYUV->data[2], de->frameYUV->data[3], de->frameYUV->data[4], de->frameYUV->data[5], de->frameYUV->data[6], de->frameYUV->data[7]);
+	// av_log(NULL, AV_LOG_ERROR, "srcStride: %d, %d, %d, %d, %d, %d, %d, %d\n", de->frameYUV->linesize[0], de->frameYUV->linesize[1], de->frameYUV->linesize[2], de->frameYUV->linesize[3], de->frameYUV->linesize[4], de->frameYUV->linesize[5], de->frameYUV->linesize[6], de->frameYUV->linesize[7]);
+	ret = sws_scale(de->sws, 
+		de->frameYUV->data, de->frameYUV->linesize,
+		0, height, 
+		dstSlice, dstStride);
+	// av_log(NULL, AV_LOG_ERROR, "sws_scale end\n");
+	if (ret < 0) {
+		av_log(NULL, AV_LOG_DEBUG, "sws_scale_frame ret: %d\n", ret);
+		return NULL;
 	}
 	av_frame_unref(de->frameYUV);
 	return f;
@@ -473,16 +443,31 @@ Frame* getFrame(void *ctx) {
 		return f;
 	}
 
-	ret = av_read_frame(de->fmt, de->packet);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_VERBOSE, "no fmt frame, av_read_frame ret %d\n", ret);
+	int n = de->io_read_cb(de, de->io_buffer, de->io_buffer_size);
+	if (n <= 0) {
+		av_log(NULL, AV_LOG_TRACE, "no data\n");
 		return NULL;
 	}
+	uint8_t* buf = de->io_buffer;
 
-	ret = avcodec_send_packet(de->ctx, de->packet);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_ERROR, "avcodec_send_packet err: %d\n", ret);
-		return NULL;
+	while (n > 0)
+	{
+		ret = av_parser_parse2(de->parser, de->ctx, 
+			&(de->packet->data), &(de->packet->size), 
+			buf, n, 
+			AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+		if (ret < 0) {
+			av_log(NULL, AV_LOG_VERBOSE, "av_parser_parse2 ret %d\n", ret);
+			break;
+		}
+		buf += ret;
+		n -= ret;
+		if (de->packet->size > 0) {
+			ret = avcodec_send_packet(de->ctx, de->packet);
+			if (ret < 0) {
+				av_log(NULL, AV_LOG_VERBOSE, "avcodec_send_packet ret: %d\n", ret);
+			}
+		}
 	}
 
 	f = recvFrame(de);

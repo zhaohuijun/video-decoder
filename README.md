@@ -8,6 +8,9 @@
 # 构建
 ./build.sh
 
+# 使用
+见 [示例项目](https://github.com/zhaohuijun/video-decoder-test)
+
 # 参考项目
 * [WasmVideoPlayer](https://github.com/sonysuqin/WasmVideoPlayer)  
 * [decoder_wasm](https://github.com/goldvideo/decoder_wasm)  

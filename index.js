@@ -134,6 +134,8 @@ class Decoder {
   constructor(typ) {
     const self = this
     this._buf = []
+    this._initBuf = []
+    this._infoReady = false
     switch (typ) {
       case 'h264':
         {
@@ -163,21 +165,30 @@ class Decoder {
   }
 
   _cb(opaque, buf, bufSize) {
-    // console.log('cb this:', this)
-    // console.log('cb:', opaque, buf, bufSize);
+    // log('debug', 'cb this:', this)
+    // log('debug', 'io_cb:', opaque, buf, bufSize);
+    let ret = -(0x20464F45) // 'EOF '
     if (this._buf.length <= 0) {
-      return -(0x20464F45) // 'EOF '
+      log('debug', 'no buf when io_cb')
+      return ret 
     }
     let item = this._buf.shift()
     if (bufSize >= item.length) {
-      libDe.HEAPU8.set(buf, item)
-      return item.length
+      libDe.HEAPU8.set(item, buf)
+      // log('debug', 'io_cb ret 1:', item.length)
+      ret = item.length
     } else {
-      libDe.HEAPU8.set(buf, item.subarray(0, bufSize))
-      item = item.subarray(bufSize)
-      this._buf.unshift(item)
-      return bufSize
+      const restItem = item.subarray(bufSize) // 剩余的，放回队列头
+      item = item.subarray(0, bufSize) // 这次消费的
+      libDe.HEAPU8.set(item, buf)
+      this._buf.unshift(restItem)
+      // log('debug', 'io_cb ret 2:', bufSize)
+      ret = bufSize
     }
+    if (!this._infoReady) {
+      this._initBuf.push(item) // 如果没有找到info，这些数据还需要再次使用
+    }
+    return ret
   }
 
   type() {
@@ -210,10 +221,6 @@ class Decoder {
       return
     }
     this._buf.push(buf)
-    // const cBuf = libDe._malloc(buf.length)
-    // libDe.HEAPU8.set(buf, cBuf)
-    // libDe._put(this._ctx, cBuf, buf.length)
-    // libDe._free(cBuf)
     return
   }
 
@@ -221,13 +228,55 @@ class Decoder {
   get() {
     if (!this._ctx) {
       log('error', 'no _ctx when put')
-      return
+      return null
+    }
+    if (!this._infoReady) {
+      const r = libDe._streamInfoReady(this._ctx)
+      if (r) {
+        this._infoReady = true
+      } else {
+        // 把initBuf用上
+        for (let i = this._initBuf.length - 1; i >= 0; i--) {
+          this._buf.unshift(this._initBuf[i])
+        }
+        this._initBuf = []
+        libDe._findStreamInfo(this._ctx)
+        const rr = libDe._streamInfoReady(this._ctx)
+        if (rr) {
+          this._infoReady = true
+          log('info', 'infoReady')
+        } else {
+          return null
+        }
+      }
     }
     const f = libDe._getFrame(this._ctx)
-    console.log('frame: ', f)
-    return null
+    if (f) {
+      const widthBuf = libDe.HEAPU8.subarray(f, f + 4)
+      const heightBuf = libDe.HEAPU8.subarray(f + 4, f + 8)
+      const width = buf2int(widthBuf)
+      const height = buf2int(heightBuf)
+      // log('info', 'width:', width, ', height:', height)
+      // const width = f[0] | f[1]
+      const dataSize = (width * height) << 2
+      // log('error', 'dataSize:', dataSize)
+      const data = new Uint8Array(libDe.HEAPU8.subarray(f + 8, f + 8 + dataSize))
+      libDe._free(f)
+      return {
+        width, 
+        height,
+        data
+      }
+    } else {
+      log('info', '_getFrame null')
+      return null
+    }
   }
 
+}
+
+function buf2int(buf) {
+  return buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24)
 }
 
 export default Decoder
