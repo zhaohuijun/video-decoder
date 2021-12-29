@@ -443,37 +443,45 @@ Frame* getFrame(void *ctx) {
 		return f;
 	}
 
-	int n = de->io_read_cb(de, de->io_buffer, de->io_buffer_size);
-	if (n <= 0) {
-		av_log(NULL, AV_LOG_TRACE, "no data\n");
-		return NULL;
-	}
-	uint8_t* buf = de->io_buffer;
-
-	while (n > 0)
-	{
-		ret = av_parser_parse2(de->parser, de->ctx, 
-			&(de->packet->data), &(de->packet->size), 
-			buf, n, 
-			AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-		if (ret < 0) {
-			av_log(NULL, AV_LOG_VERBOSE, "av_parser_parse2 ret %d\n", ret);
-			break;
+	while (1) {
+		int n = de->io_read_cb(de, de->io_buffer, de->io_buffer_size);
+		if (n <= 0) {
+			av_log(NULL, AV_LOG_TRACE, "no data\n");
+			// // flush, flush之后就不能再灌入数据了
+			// ret = avcodec_send_packet(de->ctx, NULL);
+			// if (ret < 0) {
+			// 	av_log(NULL, AV_LOG_VERBOSE, "flush avcodec_send_packet ret: %d\n", ret);
+			// 	return NULL;
+			// }
+			// return recvFrame(de);
+			return NULL;
 		}
-		buf += ret;
-		n -= ret;
-		if (de->packet->size > 0) {
-			ret = avcodec_send_packet(de->ctx, de->packet);
+		uint8_t* buf = de->io_buffer;
+
+		while (n > 0)
+		{
+			ret = av_parser_parse2(de->parser, de->ctx, 
+				&(de->packet->data), &(de->packet->size), 
+				buf, n, 
+				AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
 			if (ret < 0) {
-				av_log(NULL, AV_LOG_VERBOSE, "avcodec_send_packet ret: %d\n", ret);
+				av_log(NULL, AV_LOG_VERBOSE, "av_parser_parse2 ret %d\n", ret);
+				break;
+			}
+			buf += ret;
+			n -= ret;
+			if (de->packet->size > 0) {
+				ret = avcodec_send_packet(de->ctx, de->packet);
+				if (ret < 0) {
+					av_log(NULL, AV_LOG_VERBOSE, "avcodec_send_packet ret: %d\n", ret);
+				}
 			}
 		}
-	}
 
-	f = recvFrame(de);
-	if (f) {
-		return f;
+		f = recvFrame(de);
+		if (f) {
+			return f;
+		}
 	}
-	
 	return NULL;
 }

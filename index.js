@@ -175,14 +175,14 @@ class Decoder {
     let item = this._buf.shift()
     if (bufSize >= item.length) {
       libDe.HEAPU8.set(item, buf)
-      // log('debug', 'io_cb ret 1:', item.length)
+      log('debug', 'io_cb ret 1:', item.length)
       ret = item.length
     } else {
       const restItem = item.subarray(bufSize) // 剩余的，放回队列头
       item = item.subarray(0, bufSize) // 这次消费的
       libDe.HEAPU8.set(item, buf)
       this._buf.unshift(restItem)
-      // log('debug', 'io_cb ret 2:', bufSize)
+      log('debug', 'io_cb ret 2:', bufSize)
       ret = bufSize
     }
     if (!this._infoReady) {
