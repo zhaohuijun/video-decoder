@@ -29,6 +29,7 @@ emcc src/decoder2.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/
     -I "ffmpeg/include" \
     -s WASM=1 \
     -s TOTAL_MEMORY=${TOTAL_MEMORY} \
+    -s ALLOW_MEMORY_GROWTH=1 \
    	-s EXPORTED_FUNCTIONS="${EXPORTED_FUNCTIONS}" \
    	-s EXTRA_EXPORTED_RUNTIME_METHODS="['addFunction']" \
 	-s RESERVED_FUNCTION_POINTERS=14 \
