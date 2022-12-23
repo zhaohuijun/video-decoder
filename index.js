@@ -75,7 +75,7 @@ function log(level, _) {
   if (gLogLevel < 0) {
     return
   }
-  const l = logLevelToInt(level)
+  let l = logLevelToInt(level)
   if (l < 0) {
     l = LOG_LEVEL_INFO
   }
