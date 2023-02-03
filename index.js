@@ -273,6 +273,55 @@ class Decoder {
     }
   }
 
+  // 取图片
+  getMT() {
+    if (!this._ctx) {
+      log('error', 'no _ctx when put')
+      return null
+    }
+    if (!this._infoReady) {
+      const r = libDe._streamInfoReady(this._ctx)
+      if (r) {
+        this._infoReady = true
+      } else {
+        // 把initBuf用上
+        for (let i = this._initBuf.length - 1; i >= 0; i--) {
+          this._buf.unshift(this._initBuf[i])
+        }
+        this._initBuf = []
+        libDe._findStreamInfo(this._ctx)
+        const rr = libDe._streamInfoReady(this._ctx)
+        if (rr) {
+          this._infoReady = true
+          log('info', 'infoReady')
+        } else {
+          return null
+        }
+      }
+    }
+    const f = libDe._getFrameMT(this._ctx)
+    if (f) {
+      const widthBuf = libDe.HEAPU8.subarray(f, f + 4)
+      const heightBuf = libDe.HEAPU8.subarray(f + 4, f + 8)
+      const width = buf2int(widthBuf)
+      const height = buf2int(heightBuf)
+      // log('info', 'width:', width, ', height:', height)
+      // const width = f[0] | f[1]
+      const dataSize = (width * height) << 2
+      // log('error', 'dataSize:', dataSize)
+      const data = new Uint8Array(libDe.HEAPU8.subarray(f + 8, f + 8 + dataSize))
+      libDe._free(f)
+      return {
+        width, 
+        height,
+        data
+      }
+    } else {
+      log('info', '_getFrame null')
+      return null
+    }
+  }
+
 }
 
 function buf2int(buf) {

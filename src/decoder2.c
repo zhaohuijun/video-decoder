@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <pthread.h>
+
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
@@ -117,6 +119,7 @@ typedef struct {
 	int height;				// 图像高度
 	int found_info;			// 找到流信息
 	int offset;				// 已经处理过的数据
+	Frame* latestFrame;	// 最新的一帧解码结果
 } Decoder;
 
 void releaseDecoder(void *ctx) {
@@ -484,4 +487,29 @@ Frame* getFrame(void *ctx) {
 		}
 	}
 	return NULL;
+}
+
+void getFrameThreadFun(void *ctx) {
+	Frame* f = getFrame(ctx);
+	Decoder* de = (Decoder*)ctx;
+	de->latestFrame = f;
+}
+
+Frame* getFrameMT(void *ctx) {
+	if (!ctx) {
+		return NULL;
+	}
+	pthread_t bg_thread;
+	int ret = pthread_create(&bg_thread, NULL, getFrameThreadFun, ctx);
+	if (ret != 0) {
+		av_log(NULL, AV_LOG_ERROR	, "pthread_create ret: %d\n", ret);
+		return NULL;
+	}
+	ret = pthread_join(bg_thread, NULL);
+	if (ret != 0) {
+		av_log(NULL, AV_LOG_ERROR	, "pthread_join ret: %d\n", ret);
+		return NULL;
+	}
+	Decoder* de = (Decoder*)ctx;
+	return de->latestFrame;
 }

@@ -15,6 +15,7 @@ export EXPORTED_FUNCTIONS="[ \
 		'_createH265Decoder', \
 		'_releaseDecoder', \
 		'_getFrame', \
+		'_getFrameMT', \
 		'_findStreamInfo', \
 		'_streamInfoReady' \
 ]"
@@ -29,13 +30,19 @@ emcc src/decoder2.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/
     -I "ffmpeg/include" \
     -s WASM=1 \
     -s TOTAL_MEMORY=${TOTAL_MEMORY} \
+		-s WASM_MEM_MAX=4096MB \
     -s ALLOW_MEMORY_GROWTH=1 \
    	-s EXPORTED_FUNCTIONS="${EXPORTED_FUNCTIONS}" \
    	-s EXTRA_EXPORTED_RUNTIME_METHODS="['addFunction']" \
 	-s RESERVED_FUNCTION_POINTERS=14 \
 	-s FORCE_FILESYSTEM=1 \
 	-s SINGLE_FILE=1 \
+	-s USE_PTHREADS=1 \
+	-s PTHREAD_POOL_SIZE=8 \
     -o ${SHELL_FOLDER}/dist/libdecoder_264_265.js
+
+# 替换worker文件的路径
+sed -e 's/libdecoder_264_265\.worker\.js/\.\/wasm_worker\/libdecoder_264_265\.worker\.js/g' -i '' dist/libdecoder_264_265.js
 
 echo "export default Module" >> ${SHELL_FOLDER}/dist/libdecoder_264_265.js
 
