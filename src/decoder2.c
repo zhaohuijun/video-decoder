@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include <pthread.h>
 
@@ -46,7 +47,9 @@ void logCB(void* ptr, int level, const char* fmt, va_list vl) {
 	if (level > g_logLevel) {
 		return;
 	}
-	snprintf(line + strlen(line), sizeof(line) - strlen(line), "%s", logLevelStr(level));
+	struct timeval tm;
+	gettimeofday(&tm, NULL);
+	snprintf(line + strlen(line), sizeof(line) - strlen(line), "[%d.%06d]%s", tm.tv_sec, tm.tv_usec, logLevelStr(level));
 	if (avc) {
 		if (avc->parent_log_context_offset) {
 			AVClass** parent = *(AVClass***)(((uint8_t*)ptr) + avc->parent_log_context_offset);
@@ -436,18 +439,25 @@ Frame* getFrame(void *ctx) {
 	}
 	Decoder* de = (Decoder*)ctx;
 
+	av_log(NULL, AV_LOG_DEBUG, "getFrame begin\n");
 	if (!de->found_info) {
 		av_log(NULL, AV_LOG_ERROR, "need findStreamInfo first\n");
 		return NULL;
 	}
 
+	av_log(NULL, AV_LOG_DEBUG, "getFrame 1\n");
 	f = recvFrame(de);
+	av_log(NULL, AV_LOG_DEBUG, "getFrame 2\n");
 	if (f) {
+		av_log(NULL, AV_LOG_DEBUG, "getFrame end f\n");
 		return f;
 	}
+	av_log(NULL, AV_LOG_DEBUG, "getFrame 3\n");
 
 	while (1) {
+		av_log(NULL, AV_LOG_DEBUG, "getFrame 4\n");
 		int n = de->io_read_cb(de, de->io_buffer, de->io_buffer_size);
+		av_log(NULL, AV_LOG_DEBUG, "getFrame 4.5\n");
 		if (n <= 0) {
 			av_log(NULL, AV_LOG_TRACE, "no data\n");
 			// // flush, flush之后就不能再灌入数据了
@@ -457,10 +467,12 @@ Frame* getFrame(void *ctx) {
 			// 	return NULL;
 			// }
 			// return recvFrame(de);
+			av_log(NULL, AV_LOG_DEBUG, "getFrame end NULL\n");
 			return NULL;
 		}
 		uint8_t* buf = de->io_buffer;
 
+		av_log(NULL, AV_LOG_DEBUG, "getFrame 5\n");
 		while (n > 0)
 		{
 			ret = av_parser_parse2(de->parser, de->ctx, 
@@ -481,26 +493,35 @@ Frame* getFrame(void *ctx) {
 			}
 		}
 
+		av_log(NULL, AV_LOG_DEBUG, "getFrame 6\n");
 		f = recvFrame(de);
+		av_log(NULL, AV_LOG_DEBUG, "getFrame 7\n");
 		if (f) {
+			av_log(NULL, AV_LOG_DEBUG, "getFrame end f 2\n");
 			return f;
 		}
 	}
+	av_log(NULL, AV_LOG_DEBUG, "getFrame end NULL 2\n");
 	return NULL;
 }
 
-void getFrameThreadFun(void *ctx) {
+void *getFrameThreadFun(void *ctx) {
+	av_log(NULL, AV_LOG_DEBUG, "getFrameThreadFun begin\n");
 	Frame* f = getFrame(ctx);
 	Decoder* de = (Decoder*)ctx;
 	de->latestFrame = f;
+	av_log(NULL, AV_LOG_DEBUG, "getFrameThreadFun end\n");
+	return NULL;
 }
 
 Frame* getFrameMT(void *ctx) {
 	if (!ctx) {
 		return NULL;
 	}
+	av_log(NULL, AV_LOG_DEBUG, "getFrameMT begin\n");
 	pthread_t bg_thread;
 	int ret = pthread_create(&bg_thread, NULL, getFrameThreadFun, ctx);
+	av_log(NULL, AV_LOG_DEBUG, "pthread_create ret: %d\n", ret);
 	if (ret != 0) {
 		av_log(NULL, AV_LOG_ERROR	, "pthread_create ret: %d\n", ret);
 		return NULL;
@@ -511,5 +532,6 @@ Frame* getFrameMT(void *ctx) {
 		return NULL;
 	}
 	Decoder* de = (Decoder*)ctx;
+	av_log(NULL, AV_LOG_DEBUG, "getFrameMT end\n");
 	return de->latestFrame;
 }

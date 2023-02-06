@@ -42,7 +42,9 @@ emcc src/decoder2.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/
     -o ${SHELL_FOLDER}/dist/libdecoder_264_265.js
 
 # 替换worker文件的路径
-sed -e 's/libdecoder_264_265\.worker\.js/\.\/wasm_worker\/libdecoder_264_265\.worker\.js/g' -i '' dist/libdecoder_264_265.js
+sed -e 's/libdecoder_264_265\.worker\.js/\/wasm_worker\/libdecoder_264_265\.worker\.js/g' -i '' dist/libdecoder_264_265.js
+
+cp ${SHELL_FOLDER}/dist/libdecoder_264_265.js ${SHELL_FOLDER}/dist/libdecoder_264_265.org.js
 
 echo "export default Module" >> ${SHELL_FOLDER}/dist/libdecoder_264_265.js
 
