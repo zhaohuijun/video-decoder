@@ -172,20 +172,6 @@ void releaseDecoder(void *ctx) {
 	av_log(NULL, AV_LOG_DEBUG, "releaseDecoder end");
 }
 
-int io_read_cb_wrapper(void *opaque, unsigned char* buf, int buf_size) {
-	if (!opaque) {
-		return AVERROR_EXIT;
-	}
-	Decoder* de = (Decoder*)opaque;
-	int ret = de->io_read_cb(NULL, buf, buf_size);
-	if (ret > 0) {
-		av_log(NULL, AV_LOG_TRACE, "io_read: off:%d, len:%d, first:%x, end:%x", 
-			de->offset, ret, buf[0], buf[ret-1]);
-		de->offset += ret;
-	}
-	return ret;
-}
-
 void* createDecoder(const char* fmt_name, enum AVCodecID type_id, IOReadCallback cb) {
 	int ret = 0;
 
@@ -259,12 +245,82 @@ void* createDecoder(const char* fmt_name, enum AVCodecID type_id, IOReadCallback
 	return de;
 }
 
-void* createH264Decoder(IOReadCallback cb) {
-	return createDecoder("h264", AV_CODEC_ID_H264, cb);
+// 链表，用来存buf
+typedef struct _BufferList BufferList;
+struct _BufferList
+{
+	BufferList *next;
+	unsigned char *buf;
+	int len;
+};
+
+BufferList *bufferHead = NULL;
+BufferList *bufferTail = NULL;
+
+// 新建一个item，并放到尾部
+BufferList* newBufferItem(unsigned char *buf, int len) {
+	BufferList *item = malloc(sizeof(BufferList));
+	if (!item) {
+		av_log(NULL, AV_LOG_ERROR, "malloc err in newBufferItem\n");
+		return NULL;
+	}
+	item->next = NULL;
+	item->buf = buf;
+	item->len = len;
+	if (bufferTail == NULL) {
+		// 空链
+		bufferHead = item;
+		bufferTail = item;
+	} else {
+		bufferTail->next = item;
+		bufferTail = item;
+	}
+	return item;
 }
 
-void* createH265Decoder(IOReadCallback cb) {
-	return createDecoder("hevc", AV_CODEC_ID_H265, cb);
+// 输入新的数据
+void putBuffer(unsigned char *buf, int len) {
+	av_log(NULL, AV_LOG_DEBUG, "putBuffer %d\n", len);
+	newBufferItem(buf, len);
+}
+
+int readDataCB(void *opaque, unsigned char* buf, int buf_size) {
+	int ret = -(0x20464F45); // 'EOF '
+	av_log(NULL, AV_LOG_DEBUG, "readDataCB %d %d\n", bufferHead, bufferTail);
+	if (bufferHead == NULL) {
+		// 没有数据，返回 EOF
+		return ret;
+	}
+	if (buf_size >= bufferHead->len) {
+		// 取出第一块buf
+		BufferList *head = bufferHead;
+		memcpy(buf, head->buf, head->len);
+		ret = head->len;
+		bufferHead = head->next;
+		if (bufferHead == NULL) {
+			// 取空了
+			bufferTail = NULL;
+		}
+		// 释放内存
+		free(head->buf);	// 这个内存是js里面分配的
+		free(head);
+	} else {
+		BufferList *head = bufferHead;
+		memcpy(buf, head->buf, buf_size);
+		int nlen = head->len - buf_size;
+		memmove(head->buf, head->buf + buf_size, nlen);
+		head->len = nlen;
+		ret = buf_size;
+	}
+	return ret;
+}
+
+void* createH264Decoder() {
+	return createDecoder("h264", AV_CODEC_ID_H264, readDataCB);
+}
+
+void* createH265Decoder() {
+	return createDecoder("hevc", AV_CODEC_ID_H265, readDataCB);
 }
 
 int streamInfoReady(void *ctx) {
@@ -286,92 +342,6 @@ int findStreamInfo(void* ctx) {
 	de->found_info = 1;
 
 	return 0;
-}
-
-Frame* recvFrameRGBAOld(Decoder* de) {
-	int ret = avcodec_receive_frame(de->ctx, de->frameYUV);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_DEBUG, "avcodec_receive_frame ret: %d\n", ret);
-		return NULL;
-	}
-	// 拿到的图片是yuv的，转rgba
-	if (de->sws) {
-		if (de->width != de->frameYUV->width || de->height != de->frameYUV->height) {
-			sws_freeContext(de->sws);
-			de->sws = NULL;
-		}
-	}
-	if (!de->sws) {
-		de->sws = sws_getContext(
-			de->frameYUV->width, de->frameYUV->height, AV_PIX_FMT_YUV420P,
-			de->frameYUV->width, de->frameYUV->height, AV_PIX_FMT_RGBA,
-			0, NULL, NULL, NULL);
-		if (!de->sws) {
-			av_log(NULL, AV_LOG_ERROR, "sws_getContext fail.");
-			return NULL;
-		}
-		de->width = de->frameYUV->width;
-		de->height = de->frameYUV->height;
-	}
-	de->frameRGBA->width = de->frameYUV->width;
-	de->frameRGBA->height = de->frameYUV->height;
-	de->frameRGBA->format = AV_PIX_FMT_RGBA;
-	av_frame_get_buffer(de->frameRGBA, 0);
-	ret = sws_scale(de->sws, 
-		de->frameYUV->data, de->frameYUV->linesize,
-		0, de->frameYUV->height, 
-		de->frameRGBA->data, de->frameRGBA->linesize);
-	av_frame_unref(de->frameYUV);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_DEBUG, "sws_scale_frame ret: %d\n", ret);
-		return NULL;
-	}
-	// 创建返回用的对象
-	int size = de->frameRGBA->width * de->frameRGBA->height;
-	size <<= 2; // 一个像素4个byte，rgba
-	Frame* f = malloc(sizeof(Frame) + size);
-	if (!f) {
-		av_log(NULL, AV_LOG_ERROR, "av_malloc err: %d\n", size);
-		return NULL;
-	}
-	f->width = de->frameRGBA->width;
-	f->height = de->frameRGBA->height;
-	memcpy(f->buf, de->frameRGBA->buf[0]->data, de->frameRGBA->buf[0]->size);
-	av_frame_unref(de->frameRGBA);
-	return f;
-}
-
-Frame* recvFrameMONO(Decoder* de) {
-	int ret = avcodec_receive_frame(de->ctx, de->frameYUV);
-	if (ret < 0) {
-		av_log(NULL, AV_LOG_DEBUG, "avcodec_receive_frame ret: %d\n", ret);
-		return NULL;
-	}
-	// 创建返回用的对象
-	int size = de->frameYUV->width * de->frameYUV->height;
-	size <<= 2; // 一个像素4个byte，rgba
-	Frame* f = malloc(sizeof(Frame) + size);
-	if (!f) {
-		av_log(NULL, AV_LOG_ERROR, "av_malloc err: %d\n", size);
-		return NULL;
-	}
-	// av_log(NULL, AV_LOG_ERROR, "buf size: %d\n", size);
-	f->width = de->frameYUV->width;
-	f->height = de->frameYUV->height;
-	// memcpy(f->buf, de->frameYUV->buf[0]->data, de->frameRGBA->buf[0]->size);
-	// memset(f->buf, 255, size);
-	for (int y = 0; y < f->height; y++) {
-		for (int x = 0; x < f->width; x++) {
-			unsigned char v = de->frameYUV->buf[0]->data[y * f->width + x];
-			int p = y * f->width * 4 + x * 4;
-			f->buf[p] = v;
-			f->buf[p+1] = 0;
-			f->buf[p+2] = 0;
-			f->buf[p+3] = 255;
-		}
-	}
-	av_frame_unref(de->frameYUV);
-	return f;
 }
 
 Frame* recvFrame(Decoder* de) {
@@ -459,15 +429,7 @@ Frame* getFrame(void *ctx) {
 		int n = de->io_read_cb(de, de->io_buffer, de->io_buffer_size);
 		av_log(NULL, AV_LOG_DEBUG, "getFrame 4.5\n");
 		if (n <= 0) {
-			av_log(NULL, AV_LOG_TRACE, "no data\n");
-			// // flush, flush之后就不能再灌入数据了
-			// ret = avcodec_send_packet(de->ctx, NULL);
-			// if (ret < 0) {
-			// 	av_log(NULL, AV_LOG_VERBOSE, "flush avcodec_send_packet ret: %d\n", ret);
-			// 	return NULL;
-			// }
-			// return recvFrame(de);
-			av_log(NULL, AV_LOG_DEBUG, "getFrame end NULL\n");
+			av_log(NULL, AV_LOG_DEBUG, "getFrame end NULL (no data) (%d)\n", n);
 			return NULL;
 		}
 		uint8_t* buf = de->io_buffer;

@@ -211,6 +211,22 @@ class Decoder {
 
   // 输入编码数据，输出解码结果，输出是一个数组
   // 参数是 Uint8Array 类型
+  // put(buf) {
+  //   if (!this._ctx) {
+  //     log('error', 'no _ctx when put')
+  //     return
+  //   }
+  //   if (!buf) {
+  //     log('error', 'need param buf')
+  //     return
+  //   }
+  //   if (!(buf instanceof Uint8Array)) {
+  //     log('error', 'param buf must be Uint8Array')
+  //     return
+  //   }
+  //   this._buf.push(buf)
+  //   return
+  // }
   put(buf) {
     if (!this._ctx) {
       log('error', 'no _ctx when put')
@@ -224,7 +240,13 @@ class Decoder {
       log('error', 'param buf must be Uint8Array')
       return
     }
-    this._buf.push(buf)
+    const b = libDe._malloc(buf.length);
+    if (!b) {
+      log('error', 'malloc err in put')
+      return
+    }
+    libDe.HEAPU8.set(buf, b)
+    libDe._putBuffer(b, buf.length)
     return
   }
 

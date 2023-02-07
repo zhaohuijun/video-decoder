@@ -14,6 +14,7 @@ export EXPORTED_FUNCTIONS="[ \
 		'_createH264Decoder', \
 		'_createH265Decoder', \
 		'_releaseDecoder', \
+		'_putBuffer', \
 		'_getFrame', \
 		'_getFrameMT', \
 		'_findStreamInfo', \
