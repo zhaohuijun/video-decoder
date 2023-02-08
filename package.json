@@ -1,6 +1,6 @@
 {
   "name": "video-decoder",
-  "version": "1.2.19",
+  "version": "1.2.25",
   "description": "",
   "main": "index.js",
   "scripts": {

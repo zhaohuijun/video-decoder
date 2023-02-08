@@ -133,29 +133,38 @@ class Decoder {
   }
 
   // 构造函数，参数是编码类型
-  constructor(typ) {
+  constructor(typ, frameCB) {
     const self = this
     this._buf = []
     this._initBuf = []
     this._infoReady = false
+
+    // const cb = libDe.addFunction((opaque, frame) => {
+    //   const widthBuf = libDe.HEAPU8.subarray(frame, frame + 4)
+    //   const heightBuf = libDe.HEAPU8.subarray(frame + 4, frame + 8)
+    //   const width = buf2int(widthBuf)
+    //   const height = buf2int(heightBuf)
+    //   // log('info', 'width:', width, ', height:', height)
+    //   const dataSize = (width * height) << 2
+    //   // log('error', 'dataSize:', dataSize)
+    //   const data = new Uint8Array(libDe.HEAPU8.subarray(f + 8, f + 8 + dataSize))
+    //   libDe._free(frame)
+    //   frameCB({
+    //     width, 
+    //     height,
+    //     data
+    //   })
+    // })
     switch (typ) {
       case 'h264':
         {
-          const cb = libDe.addFunction((opaque, buf, bufSize) => {
-            console.log('cb fun wrapper')
-            return self._cb(opaque, buf, bufSize)
-          })
-          this._ctx = libDe._createH264Decoder(cb)
+          this._ctx = libDe._createH264Decoder()
           this._typ = 'h264'
         }
         break
       case 'h265':
         {
-          const cb = libDe.addFunction((opaque, buf, bufSize) => {
-            console.log('cb fun wrapper')
-            return self._cb(opaque, buf, bufSize)
-          })
-          this._ctx = libDe._createH265Decoder(cb)
+          this._ctx = libDe._createH265Decoder()
           this._typ = 'h265'
         }
         break
@@ -168,39 +177,39 @@ class Decoder {
     log('debug', 'Decoder constructored', typ)
   }
 
-  _cb(opaque, buf, bufSize) {
-    // log('debug', 'cb this:', this)
-    // log('debug', 'io_cb:', opaque, buf, bufSize);
-    let ret = -(0x20464F45) // 'EOF '
-    if (this._buf.length <= 0) {
-      log('debug', 'no buf when io_cb')
-      return ret 
-    }
-    let item = this._buf.shift()
-    if (bufSize >= item.length) {
-      libDe.HEAPU8.set(item, buf)
-      log('debug', 'io_cb ret 1:', item.length)
-      ret = item.length
-    } else {
-      const restItem = item.subarray(bufSize) // 剩余的，放回队列头
-      item = item.subarray(0, bufSize) // 这次消费的
-      libDe.HEAPU8.set(item, buf)
-      this._buf.unshift(restItem)
-      log('debug', 'io_cb ret 2:', bufSize)
-      ret = bufSize
-    }
-    if (!this._infoReady) {
-      this._initBuf.push(item) // 如果没有找到info，这些数据还需要再次使用
-    }
-    return ret
-  }
+  // _cb(opaque, buf, bufSize) {
+  //   // log('debug', 'cb this:', this)
+  //   // log('debug', 'io_cb:', opaque, buf, bufSize);
+  //   let ret = -(0x20464F45) // 'EOF '
+  //   if (this._buf.length <= 0) {
+  //     log('debug', 'no buf when io_cb')
+  //     return ret 
+  //   }
+  //   let item = this._buf.shift()
+  //   if (bufSize >= item.length) {
+  //     libDe.HEAPU8.set(item, buf)
+  //     log('debug', 'io_cb ret 1:', item.length)
+  //     ret = item.length
+  //   } else {
+  //     const restItem = item.subarray(bufSize) // 剩余的，放回队列头
+  //     item = item.subarray(0, bufSize) // 这次消费的
+  //     libDe.HEAPU8.set(item, buf)
+  //     this._buf.unshift(restItem)
+  //     log('debug', 'io_cb ret 2:', bufSize)
+  //     ret = bufSize
+  //   }
+  //   if (!this._infoReady) {
+  //     this._initBuf.push(item) // 如果没有找到info，这些数据还需要再次使用
+  //   }
+  //   return ret
+  // }
 
   type() {
     return this._typ
   }
 
   // 析构函数，是否资源
-  dispose() {
+  async dispose() {
     if (!this._ctx) {
       return
     }
@@ -246,68 +255,92 @@ class Decoder {
       return
     }
     libDe.HEAPU8.set(buf, b)
-    libDe._putBuffer(b, buf.length)
+    const r = libDe._putBuffer(this._ctx, b, buf.length)
+    if (r < 0) {
+      libDe._free(b)
+    }
     return
   }
 
-  // 取图片
-  _get(getFrameFun) {
-    if (!this._ctx) {
-      log('error', 'no _ctx when put')
-      return null
-    }
-    if (!this._infoReady) {
-      const r = libDe._streamInfoReady(this._ctx)
-      if (r) {
-        this._infoReady = true
-      } else {
-        // 把initBuf用上
-        for (let i = this._initBuf.length - 1; i >= 0; i--) {
-          this._buf.unshift(this._initBuf[i])
-        }
-        this._initBuf = []
-        libDe._findStreamInfo(this._ctx)
-        const rr = libDe._streamInfoReady(this._ctx)
-        if (rr) {
-          this._infoReady = true
-          log('info', 'infoReady')
-        } else {
-          return null
-        }
-      }
-    }
-    const f = getFrameFun(this._ctx)
-    if (f) {
-      const widthBuf = libDe.HEAPU8.subarray(f, f + 4)
-      const heightBuf = libDe.HEAPU8.subarray(f + 4, f + 8)
-      const width = buf2int(widthBuf)
-      const height = buf2int(heightBuf)
-      // log('info', 'width:', width, ', height:', height)
-      // const width = f[0] | f[1]
-      const dataSize = (width * height) << 2
-      // log('error', 'dataSize:', dataSize)
-      const data = new Uint8Array(libDe.HEAPU8.subarray(f + 8, f + 8 + dataSize))
-      libDe._free(f)
-      return {
-        width, 
-        height,
-        data
-      }
-    } else {
-      log('info', '_getFrame null')
-      return null
-    }
-  }
-
-  // 取图片(单线程)
   get() {
-    return this._get(libDe._getFrame)
+    const frame = libDe._getFrame(this._ctx)
+    if (!frame) {
+      return null
+    }
+    const widthBuf = libDe.HEAPU8.subarray(frame, frame + 4)
+    const heightBuf = libDe.HEAPU8.subarray(frame + 4, frame + 8)
+    const width = buf2int(widthBuf)
+    const height = buf2int(heightBuf)
+    // log('info', 'width:', width, ', height:', height)
+    const dataSize = (width * height) << 2
+    // log('error', 'dataSize:', dataSize)
+    const data = new Uint8Array(libDe.HEAPU8.subarray(frame + 8, frame + 8 + dataSize))
+    libDe._free(frame)
+    return {
+      width, 
+      height,
+      data
+    }
   }
 
-  // 取图片(多线程)
-  getMT() {
-    return this._get(libDe._getFrameMT)
-  }
+  // // 取图片
+  // _get(getFrameFun) {
+  //   if (!this._ctx) {
+  //     log('error', 'no _ctx when put')
+  //     return null
+  //   }
+  //   if (!this._infoReady) {
+  //     const r = libDe._streamInfoReady(this._ctx)
+  //     if (r) {
+  //       this._infoReady = true
+  //     } else {
+  //       // 把initBuf用上
+  //       for (let i = this._initBuf.length - 1; i >= 0; i--) {
+  //         this._buf.unshift(this._initBuf[i])
+  //       }
+  //       this._initBuf = []
+  //       libDe._findStreamInfo(this._ctx)
+  //       const rr = libDe._streamInfoReady(this._ctx)
+  //       if (rr) {
+  //         this._infoReady = true
+  //         log('info', 'infoReady')
+  //       } else {
+  //         return null
+  //       }
+  //     }
+  //   }
+  //   const f = getFrameFun(this._ctx)
+  //   if (f) {
+  //     const widthBuf = libDe.HEAPU8.subarray(f, f + 4)
+  //     const heightBuf = libDe.HEAPU8.subarray(f + 4, f + 8)
+  //     const width = buf2int(widthBuf)
+  //     const height = buf2int(heightBuf)
+  //     // log('info', 'width:', width, ', height:', height)
+  //     // const width = f[0] | f[1]
+  //     const dataSize = (width * height) << 2
+  //     // log('error', 'dataSize:', dataSize)
+  //     const data = new Uint8Array(libDe.HEAPU8.subarray(f + 8, f + 8 + dataSize))
+  //     libDe._free(f)
+  //     return {
+  //       width, 
+  //       height,
+  //       data
+  //     }
+  //   } else {
+  //     log('info', '_getFrame null')
+  //     return null
+  //   }
+  // }
+
+  // // 取图片(单线程)
+  // get() {
+  //   return this._get(libDe._getFrame)
+  // }
+
+  // // 取图片(多线程)
+  // getMT() {
+  //   return this._get(libDe._getFrameMT)
+  // }
 
 }
 

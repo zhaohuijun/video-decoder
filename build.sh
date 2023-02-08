@@ -15,10 +15,7 @@ export EXPORTED_FUNCTIONS="[ \
 		'_createH265Decoder', \
 		'_releaseDecoder', \
 		'_putBuffer', \
-		'_getFrame', \
-		'_getFrameMT', \
-		'_findStreamInfo', \
-		'_streamInfoReady' \
+		'_getFrame' \
 ]"
 
 # FLAGS=' -O0 '
@@ -26,7 +23,7 @@ FLAGS=' -Os '
 FLAGS=${FLAGS}' -s ASSERTIONS=1 '
 
 echo "Running Emscripten..."
-emcc src/decoder2.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
+emcc src/decoder3.c ffmpeg/lib/libavformat.a ffmpeg/lib/libavcodec.a ffmpeg/lib/libavutil.a ffmpeg/lib/libswscale.a \
     ${FLAGS} \
     -I "ffmpeg/include" \
     -s WASM=1 \
