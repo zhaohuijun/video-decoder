@@ -49,7 +49,7 @@ void logCB(void* ptr, int level, const char* fmt, va_list vl) {
 	}
 	struct timeval tm;
 	gettimeofday(&tm, NULL);
-	snprintf(line + strlen(line), sizeof(line) - strlen(line), "[%d.%06d]%s", tm.tv_sec, tm.tv_usec, logLevelStr(level));
+	snprintf(line + strlen(line), sizeof(line) - strlen(line), "[%ld.%06ld]%s", tm.tv_sec, tm.tv_usec, logLevelStr(level));
 	if (avc) {
 		if (avc->parent_log_context_offset) {
 			AVClass** parent = *(AVClass***)(((uint8_t*)ptr) + avc->parent_log_context_offset);
@@ -286,7 +286,7 @@ void putBuffer(unsigned char *buf, int len) {
 
 int readDataCB(void *opaque, unsigned char* buf, int buf_size) {
 	int ret = -(0x20464F45); // 'EOF '
-	av_log(NULL, AV_LOG_DEBUG, "readDataCB %d %d\n", bufferHead, bufferTail);
+	av_log(NULL, AV_LOG_DEBUG, "readDataCB %p %p\n", bufferHead, bufferTail);
 	if (bufferHead == NULL) {
 		// 没有数据，返回 EOF
 		return ret;
@@ -415,26 +415,26 @@ Frame* getFrame(void *ctx) {
 		return NULL;
 	}
 
-	av_log(NULL, AV_LOG_DEBUG, "getFrame 1\n");
+	// av_log(NULL, AV_LOG_DEBUG, "getFrame 1\n");
 	f = recvFrame(de);
-	av_log(NULL, AV_LOG_DEBUG, "getFrame 2\n");
+	// av_log(NULL, AV_LOG_DEBUG, "getFrame 2\n");
 	if (f) {
 		av_log(NULL, AV_LOG_DEBUG, "getFrame end f\n");
 		return f;
 	}
-	av_log(NULL, AV_LOG_DEBUG, "getFrame 3\n");
+	// av_log(NULL, AV_LOG_DEBUG, "getFrame 3\n");
 
 	while (1) {
-		av_log(NULL, AV_LOG_DEBUG, "getFrame 4\n");
+		// av_log(NULL, AV_LOG_DEBUG, "getFrame 4\n");
 		int n = de->io_read_cb(de, de->io_buffer, de->io_buffer_size);
-		av_log(NULL, AV_LOG_DEBUG, "getFrame 4.5\n");
+		// av_log(NULL, AV_LOG_DEBUG, "getFrame 4.4\n");
 		if (n <= 0) {
 			av_log(NULL, AV_LOG_DEBUG, "getFrame end NULL (no data) (%d)\n", n);
 			return NULL;
 		}
 		uint8_t* buf = de->io_buffer;
 
-		av_log(NULL, AV_LOG_DEBUG, "getFrame 5\n");
+		// av_log(NULL, AV_LOG_DEBUG, "getFrame 5\n");
 		while (n > 0)
 		{
 			ret = av_parser_parse2(de->parser, de->ctx, 
@@ -455,9 +455,9 @@ Frame* getFrame(void *ctx) {
 			}
 		}
 
-		av_log(NULL, AV_LOG_DEBUG, "getFrame 6\n");
+		// av_log(NULL, AV_LOG_DEBUG, "getFrame 6\n");
 		f = recvFrame(de);
-		av_log(NULL, AV_LOG_DEBUG, "getFrame 7\n");
+		// av_log(NULL, AV_LOG_DEBUG, "getFrame 7\n");
 		if (f) {
 			av_log(NULL, AV_LOG_DEBUG, "getFrame end f 2\n");
 			return f;
